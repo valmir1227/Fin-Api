@@ -1,4 +1,3 @@
-const { response } = require("express");
 const express = require("express");
 const { v4: uuidv4 } = require("uuid");
 
@@ -8,9 +7,9 @@ app.use(express.json());
 
 const customers = [];
 
-//Middleware
+//Middleware para verificar existencia do usuário
 function verifyExistsAccountCPF(request, response, next) {
-  const { cpf } = request.header;
+  const { cpf } = request.headers;
 
   const customer = customers.find((customer) => customer.cpf === cpf);
 
@@ -21,6 +20,20 @@ function verifyExistsAccountCPF(request, response, next) {
   request.customer = customer;
 
   return next();
+}
+
+function getBalance(statement) {
+  // Reduce --> Pega todas as informaçoes e transforma em apenas um valor
+
+  const balance = statement.reduce((acc, operation) => {
+    if (operation.type === "credit") {
+      return acc + operation.amount;
+    } else {
+      return acc - operation.amount;
+    }
+    //Valor inicial retornado pelo Reduce
+  }, 0);
+  return balance;
 }
 
 app.post("/account", (request, response) => {
@@ -53,4 +66,39 @@ app.get("/statement", verifyExistsAccountCPF, (request, response) => {
   return response.json(customer.statement);
 });
 
-app.listen(3000);
+app.post("/deposit", verifyExistsAccountCPF, (request, response) => {
+  const { description, amount } = request.body;
+  const { customer } = request;
+
+  const statementOperation = {
+    description,
+    amount,
+    created_at: new Date(),
+    type: "credit",
+  };
+
+  customer.statement.push(statementOperation);
+
+  return response.status(201).send();
+});
+
+app.get("/withdraw", verifyExistsAccountCPF, (request, response) => {
+  const { amount } = request.body;
+  const { customer } = request;
+
+  const balance = getBalance(customer.statement);
+
+  if (balance < amount) {
+    return response.status(400).json({ error: "Insufficient founds!" });
+  } else {
+    const statementOperation = {
+      amount,
+      created_at: new Date(),
+      type: "debit",
+    };
+    customer.statement.push(statementOperation);
+    return response.status(201).send();
+  }
+});
+
+app.listen(3030);
